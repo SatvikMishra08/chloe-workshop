@@ -1,0 +1,17 @@
+{
+  "name": "chloe-workshop",
+  "version": "1.0.0",
+  "description": "MCPs for Chloe",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chrome-aws-lambda": "^10.1.0",
+    "playwright-core": "^1.28.1",
+    "playwright-aws-lambda": "^0.9.0"
+  }
+}
