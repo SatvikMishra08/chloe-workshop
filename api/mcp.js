@@ -1,35 +1,40 @@
-const playwright = require('playwright-aws-lambda');
+const cheerio = require('cheerio');
 
 async function scrapeGoogle(query) {
-    let browser = null;
-    let context = null;
     try {
-        browser = await playwright.launchChromium();
-        context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36'
-        });
-        const page = await context.newPage();
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-
-        // Wait for search results to load
-        await page.waitForSelector('div.g', { timeout: 10000 });
-
-        const results = await page.evaluate(() => {
-            const items = Array.from(document.querySelectorAll('div.g'));
-            return items.slice(0, 5).map(item => {
-                const titleEl = item.querySelector('h3');
-                const linkEl = item.querySelector('a');
-                const snippetEl = item.querySelector('div[data-sncf="2"]');
-                
-                return {
-                    title: titleEl ? titleEl.innerText : 'No Title',
-                    uri: linkEl ? linkEl.href : 'No Link',
-                    snippet: snippetEl ? snippetEl.innerText : 'No Snippet'
-                };
-            });
+        const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36'
+            }
         });
 
-        let combinedText = `Intelligence report based on top 5 search results for query: "${query}"\n\n`;
+        if (!response.ok) {
+            throw new Error(`Failed to fetch Google search results. Status: ${response.status}`);
+        }
+
+        const html = await response.text();
+        const $ = cheerio.load(html);
+
+        const results = [];
+        $('div.g').slice(0, 5).each((i, el) => {
+            const titleEl = $(el).find('h3');
+            const linkEl = $(el).find('a');
+            let snippetContainer = $(el).find('div[data-sncf="2"]').first();
+            if (snippetContainer.length === 0) {
+                 snippetContainer = $(el).find('div.VwiC3b').first();
+            }
+             
+            const title = titleEl.text();
+            const uri = linkEl.attr('href');
+            const snippet = snippetContainer.text();
+
+            if (title && uri && snippet) {
+                results.push({ title, uri, snippet });
+            }
+        });
+
+        let combinedText = `Intelligence report based on top search results for query: "${query}"\n\n`;
         results.forEach((res, i) => {
             combinedText += `[Source ${i+1}: ${res.title}]\nSnippet: ${res.snippet}\n\n`;
         });
@@ -39,22 +44,17 @@ async function scrapeGoogle(query) {
     } catch (error) {
         console.error(error);
         return { text: `Failed to conduct intelligence gathering. Error: ${error.message}`, sources: [] };
-    } finally {
-        if (context) {
-            await context.close();
-        }
-        if (browser) {
-            await browser.close();
-        }
     }
 }
 
+// This is the main Vercel serverless function handler
 module.exports = async (req, res) => {
-    // Set CORS headers to allow requests from any origin
+    // Set CORS headers to allow requests from any origin (your AI Studio app)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+    // Handle pre-flight CORS requests
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
